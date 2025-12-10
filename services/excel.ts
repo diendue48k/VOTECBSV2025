@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Voter, CandidatePhase1, CandidatePhase2 } from '../types';
+import { Voter, CandidatePhase1, CandidatePhase2, AppData } from '../types';
 
 // Hàm lấy đối tượng XLSX an toàn cho cả môi trường ESM và CommonJS (CDN)
 const getXLSX = (): any => {
@@ -165,6 +165,49 @@ export const exportToExcel = (data: any[], fileName: string) => {
   } catch (e) {
     console.error("Export error", e);
     alert("Lỗi xuất file Excel. Vui lòng thử lại.");
+  }
+};
+
+// Hàm mới: Xuất chi tiết ai bầu cho ai
+export const exportVoteAudit = (data: AppData, fileName: string) => {
+  try {
+    const X = getXLSX();
+    const wb = X.utils.book_new();
+
+    // 1. Sheet chi tiết P1
+    const p1Rows = data.votesP1.map(vote => {
+      const voter = data.voters.find(v => v.cccd === vote.voterCCCD);
+      const candidate = data.candidatesP1.find(c => c.cccd === vote.candidateCCCD);
+      return {
+        'CCCD Người Bầu': vote.voterCCCD,
+        'Tên Người Bầu': voter?.hoTen || 'Unknown',
+        'CCCD Người Được Bầu': vote.candidateCCCD,
+        'Tên Người Được Bầu': candidate?.hoTen || 'Unknown',
+        'Mức Đánh Giá': vote.level
+      };
+    });
+    const ws1 = X.utils.json_to_sheet(p1Rows);
+    X.utils.book_append_sheet(wb, ws1, "Chi_Tiet_P1");
+
+    // 2. Sheet chi tiết P2
+    const p2Rows = data.votesP2.map(vote => {
+      const voter = data.voters.find(v => v.cccd === vote.voterCCCD);
+      const candidate = data.candidatesP2.find(c => c.cccd === vote.candidateCCCD);
+      return {
+        'CCCD Người Bầu': vote.voterCCCD,
+        'Tên Người Bầu': voter?.hoTen || 'Unknown',
+        'CCCD Người Được Bầu': vote.candidateCCCD,
+        'Tên Người Được Bầu': candidate?.hoTen || 'Unknown',
+        'Loại Bầu': 'Xuất sắc'
+      };
+    });
+    const ws2 = X.utils.json_to_sheet(p2Rows);
+    X.utils.book_append_sheet(wb, ws2, "Chi_Tiet_P2");
+
+    X.writeFile(wb, `${fileName}.xlsx`);
+  } catch (e) {
+    console.error("Export audit error", e);
+    alert("Lỗi xuất báo cáo chi tiết.");
   }
 };
 

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { getDB, saveDB, resetDB, resetPhase1, resetPhase2, resetVotersOnly, forcePushToCloud } from '../services/storage';
 import { isFirebaseConfigured } from '../services/firebaseConfig';
-import { readVoters, readCandidatesP1, readCandidatesP2, exportToExcel, downloadTemplate } from '../services/excel';
-import { AppData, VoteLevel1, Phase1DisplayConfig, Phase2DisplayConfig } from '../types';
+import { readVoters, readCandidatesP1, readCandidatesP2, exportToExcel, exportVoteAudit, downloadTemplate } from '../services/excel';
+import { AppData, VoteLevel1, Phase1DisplayConfig, Phase2DisplayConfig, Voter } from '../types';
 import { Button } from '../components/ui/Button';
-import { Upload, Download, Trash2, Users, Settings, Activity, Lock, ShieldCheck, Search, FileSpreadsheet, Star, LayoutGrid, ToggleLeft, ToggleRight, Save, AlertTriangle, X, AlertCircle, Filter, CheckCircle, MinusCircle, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { Upload, Download, Trash2, Users, Settings, Activity, Lock, ShieldCheck, Search, FileSpreadsheet, Star, LayoutGrid, ToggleLeft, ToggleRight, Save, AlertTriangle, X, AlertCircle, Filter, CheckCircle, MinusCircle, Cloud, CloudOff, RefreshCw, Eye, List } from 'lucide-react';
 
 interface AdminPageProps {
   onBack: () => void;
@@ -30,6 +30,9 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack }) => {
   const [resetConfig, setResetConfig] = useState<{isOpen: boolean, type: 'full' | 'voters' | 'p1' | 'p2'}>({isOpen: false, type: 'full'});
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState('');
+
+  // Inspector State (Soi phiếu)
+  const [inspectVoter, setInspectVoter] = useState<Voter | null>(null);
 
   const isOnline = isFirebaseConfigured();
 
@@ -205,6 +208,10 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack }) => {
     }).sort((a,b) => b['Số phiếu bầu'] - a['Số phiếu bầu']);
     exportToExcel(exportData, `Ket_Qua_Binh_Bau_P2_${new Date().getTime()}`);
   };
+
+  const handleExportAudit = () => {
+      exportVoteAudit(data, `Chi_Tiet_Lich_Su_Bau_${new Date().getTime()}`);
+  }
   
   const handleExportVoterStatus = () => {
       const exportData = data.voters.map(v => ({
@@ -217,6 +224,19 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack }) => {
           'Trạng thái P2': v.hasVotedPhase2 ? 'Đã Vote' : 'Chưa'
       }));
       exportToExcel(exportData, `Trang_Thai_Cu_Tri_${new Date().getTime()}`);
+  };
+
+  // --- Inspector Logic ---
+  const getVoterHistory = (voter: Voter) => {
+      const p1 = data.votesP1.filter(v => v.voterCCCD === voter.cccd).map(v => {
+          const candidate = data.candidatesP1.find(c => c.cccd === v.candidateCCCD);
+          return { name: candidate?.hoTen || v.candidateCCCD, level: v.level };
+      });
+      const p2 = data.votesP2.filter(v => v.voterCCCD === voter.cccd).map(v => {
+          const candidate = data.candidatesP2.find(c => c.cccd === v.candidateCCCD);
+          return { name: candidate?.hoTen || v.candidateCCCD };
+      });
+      return { p1, p2 };
   };
 
   // --- Sub-Components ---
@@ -391,7 +411,8 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack }) => {
                             </select>
                             <Filter className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none"/>
                         </div>
-                        <Button variant="outline" onClick={handleExportVoterStatus} className="py-1.5 text-xs h-auto bg-white whitespace-nowrap"><Download className="w-3 h-3 mr-1"/> Xuất DS</Button>
+                        <Button variant="outline" onClick={handleExportVoterStatus} className="py-1.5 text-xs h-auto bg-white whitespace-nowrap"><List className="w-3 h-3 mr-1"/> DS Cử tri</Button>
+                        <Button onClick={handleExportAudit} className="py-1.5 text-xs h-auto bg-gray-800 text-white hover:bg-gray-900 whitespace-nowrap"><Download className="w-3 h-3 mr-1"/> Báo cáo Chi tiết</Button>
                     </div>
                 </div>
                 <div className="overflow-x-auto flex-1">
@@ -402,12 +423,13 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack }) => {
                                 <th className="px-4 py-3 border-r">Cử Tri</th>
                                 <th className="px-4 py-3 w-32 border-r">CCCD</th>
                                 <th className="px-4 py-3 w-32 text-center border-r">Vote Phần 1</th>
-                                <th className="px-4 py-3 w-32 text-center">Vote Phần 2</th>
+                                <th className="px-4 py-3 w-32 text-center border-r">Vote Phần 2</th>
+                                <th className="px-4 py-3 w-20 text-center">Chi tiết</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
                             {filteredVoters.length === 0 ? (
-                                <tr><td colSpan={5} className="p-8 text-center text-gray-400">Không tìm thấy dữ liệu phù hợp</td></tr>
+                                <tr><td colSpan={6} className="p-8 text-center text-gray-400">Không tìm thấy dữ liệu phù hợp</td></tr>
                             ) : (
                                 filteredVoters.map((v, idx) => (
                                     <tr key={v.cccd} className="hover:bg-gray-50">
@@ -423,11 +445,20 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack }) => {
                                                 <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 bg-gray-100 px-2 py-1 rounded-full"><MinusCircle className="w-3 h-3"/> Chưa</span>
                                             }
                                         </td>
-                                        <td className="px-4 py-3 text-center">
+                                        <td className="px-4 py-3 text-center border-r">
                                             {v.hasVotedPhase2 ? 
                                                 <span className="inline-flex items-center gap-1 text-xs font-bold text-green-600 bg-green-50 px-2 py-1 rounded-full border border-green-200"><CheckCircle className="w-3 h-3"/> Đã Vote</span> : 
                                                 <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 bg-gray-100 px-2 py-1 rounded-full"><MinusCircle className="w-3 h-3"/> Chưa</span>
                                             }
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            <button 
+                                                onClick={() => setInspectVoter(v)}
+                                                className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                title="Xem chi tiết phiếu bầu"
+                                            >
+                                                <Eye className="w-4 h-4"/>
+                                            </button>
                                         </td>
                                     </tr>
                                 ))
@@ -773,6 +804,94 @@ export const AdminPage: React.FC<AdminPageProps> = ({ onBack }) => {
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       {notification && <div className="fixed top-4 right-4 z-50 bg-gray-900 text-white px-4 py-3 rounded shadow-lg animate-bounce">{notification}</div>}
       
+      {/* Inspector Modal (Soi phiếu) */}
+      {inspectVoter && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+             <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+                <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-100 rounded-full text-blue-600">
+                             <Eye className="w-5 h-5"/>
+                        </div>
+                        <div>
+                             <div className="text-xs text-gray-500 uppercase font-bold">Lịch sử Bầu Cử</div>
+                             <div className="text-lg font-bold text-gray-800">{inspectVoter.hoTen}</div>
+                             <div className="text-xs text-gray-400 font-mono">{inspectVoter.cccd}</div>
+                        </div>
+                     </div>
+                     <button onClick={() => setInspectVoter(null)} className="text-gray-400 hover:text-red-500"><X className="w-6 h-6"/></button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto space-y-6">
+                    {/* P1 Detail */}
+                    <div>
+                        <h4 className="font-bold text-red-800 border-b border-red-100 pb-2 mb-3 flex items-center gap-2">
+                             <Activity className="w-4 h-4"/> Kết quả Đánh giá P1
+                        </h4>
+                        {!inspectVoter.hasVotedPhase1 ? (
+                            <div className="text-sm text-gray-400 italic bg-gray-50 p-4 rounded text-center">Cử tri chưa thực hiện đánh giá Phần 1.</div>
+                        ) : (
+                            <div className="bg-white border rounded-lg overflow-hidden text-sm">
+                                <table className="w-full text-left">
+                                    <thead className="bg-gray-100 text-gray-700 text-xs uppercase">
+                                        <tr>
+                                            <th className="px-3 py-2 border-r w-10 text-center">#</th>
+                                            <th className="px-3 py-2 border-r">Đảng viên được đánh giá</th>
+                                            <th className="px-3 py-2 text-center w-32">Mức độ</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {getVoterHistory(inspectVoter).p1.map((item, idx) => (
+                                            <tr key={idx} className="hover:bg-gray-50">
+                                                <td className="px-3 py-2 text-center text-gray-500 border-r">{idx+1}</td>
+                                                <td className="px-3 py-2 border-r font-medium">{item.name}</td>
+                                                <td className="px-3 py-2 text-center">
+                                                    <span className={`px-2 py-1 rounded text-[10px] font-bold ${
+                                                        item.level === VoteLevel1.KHONG_HOAN_THANH ? 'bg-red-100 text-red-700' :
+                                                        item.level === VoteLevel1.HOAN_THANH ? 'bg-blue-100 text-blue-700' :
+                                                        'bg-green-100 text-green-700'
+                                                    }`}>
+                                                        {item.level}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* P2 Detail */}
+                    <div>
+                        <h4 className="font-bold text-yellow-700 border-b border-yellow-100 pb-2 mb-3 flex items-center gap-2">
+                             <Star className="w-4 h-4"/> Bầu Xuất sắc P2
+                        </h4>
+                        {!inspectVoter.hasVotedPhase2 ? (
+                            <div className="text-sm text-gray-400 italic bg-gray-50 p-4 rounded text-center">Cử tri chưa thực hiện bầu Phần 2.</div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {getVoterHistory(inspectVoter).p2.length === 0 ? (
+                                    <div className="col-span-2 text-sm text-gray-500 p-3 bg-gray-50 rounded italic text-center">Phiếu trắng (Không chọn ai)</div>
+                                ) : (
+                                    getVoterHistory(inspectVoter).p2.map((item, idx) => (
+                                        <div key={idx} className="flex items-center gap-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-yellow-900 text-sm font-medium">
+                                            <CheckCircle className="w-4 h-4 text-yellow-600"/> {item.name}
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                <div className="p-4 border-t bg-gray-50 flex justify-end">
+                     <Button variant="secondary" onClick={() => setInspectVoter(null)}>Đóng</Button>
+                </div>
+             </div>
+        </div>
+      )}
+
       {/* Secure Reset Modal */}
       {resetConfig.isOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
