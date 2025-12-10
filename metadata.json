@@ -1,0 +1,5 @@
+{
+  "name": "DangVienVoteSystem",
+  "description": "Hệ thống đánh giá, xếp loại chất lượng Đảng viên qua phiếu bầu điện tử. Hỗ trợ nhập liệu Excel và thống kê báo cáo.",
+  "requestFramePermissions": []
+}
